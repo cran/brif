@@ -123,18 +123,18 @@ stratpar <- function(x, stride){
 #' @param n_numeric_cuts an integer value indicating the maximum number of split points to generate for each numeric variable. 
 #' @param n_integer_cuts an integer value indicating the maximum number of split points to generate for each integer variable. 
 #' @param max_integer_classes an integer value. If the target variable is integer and has more than max_integer_classes unique values in the training data, then the target variable will be grouped into max_integer_classes bins. If the target variable is numeric, then the smaller of max_integer_classes and the number of unique values number of bins will be created on the target variables and the regression problem will be solved as a classification problem. 
-#' @param max_depth an integer specifying the maximum depth of each tree. Default is 10. Maximum is 40. 
-#' @param min_node_size an integer specifying the minimum number of training cases a leaf node must contain. Default is 1. 
+#' @param max_depth an integer specifying the maximum depth of each tree. Maximum is 40. 
+#' @param min_node_size an integer specifying the minimum number of training cases a leaf node must contain. 
 #' @param ntrees an integer specifying the number of trees in the forest. 
 #' @param seed an integer specifying the seed used by the internal random number generator. Default is 0, meaning not to set a seed but to accept the set seed from the calling environment.
 #' @param ps an integer indicating the number of predictors to sample at each node split. Default is 0, meaning to use sqrt(p), where p is the number of predictors in the input. 
 #' @param max_factor_levels an integer. If any factor variables has more than max_factor_levels, the program stops and prompts the user to increase the value of this parameter if the too-many-level factor is indeed intended. 
 #' @param bagging_method an integer indicating the bagging sampling method: 0 for sampling without replacement; 1 for sampling with replacement (bootstrapping). 
 #' @param bagging_proportion a numeric scalar between 0 and 1, indicating the proportion of training observations to be used in each tree. 
-#' @param split_search an integer indicating the choice of the split search method. 0: randomly pick a split point (fastest, greatest variance, least effective); 1: do a greedy search starting from the mid-point; 2: evaluate every available split point and pick the best one; 3: perform a self-regulating local search to prevent over-fitting.
-#' @param search_radius an positive integer indicating the split point search radius. This parameter takes effect only when split_search is 3. 
+#' @param split_search an integer indicating the choice of the split search method. 0: randomly pick a split point; 1: do a local search; 2: random pick subject to regulation; 3: local search subject to regulation; 4 or above: a mix of options 0 to 3. 
+#' @param search_radius an positive integer indicating the split point search radius. This parameter takes effect only in the self-regulating local search (split_search = 2 or above). 
 #' @param verbose an integer (0 or 1) specifying the verbose level.  
-#' @param nthreads an integer specifying the number of threads used by the program. Default is 2. This parameter takes effect only on systems supporting OPENMP.  
+#' @param nthreads an integer specifying the number of threads used by the program. This parameter takes effect only on systems supporting OpenMP.  
 #' @param ... additional arguments.
 #' @return an object of class \code{brif}, which is a list containing the following components. Note: this object is not intended for any use other than that by the function \code{\link[brif]{predict.brif}}. Do not apply the \code{\link[utils]{str}} function on this object because the output can be long and meaningless especially when ntrees is large. Use \code{\link[base]{summary}} to get a peek of its structure. Use \code{\link[brif]{printRules}} to print out the decision rules of a particular tree. Most of the data in the object is stored in the tree_leaves element (which is a list of lists by itself) of this list. 
 #' \item{p}{an integer scalar, the number of variables (predictors) used in the model}
@@ -153,15 +153,15 @@ stratpar <- function(x, stride){
 #' \item{yc}{a list containing the target variable encoding scheme}
 #' @export 
 #' 
-brif.default <- function(x, n_numeric_cuts = 31, n_integer_cuts = 31, max_integer_classes = 20, max_depth = 10, min_node_size = 1, ntrees = 100, ps = 0, max_factor_levels = 30, seed = 0, bagging_method = 0, bagging_proportion = 0.9, split_search = 3, search_radius = 5, verbose = 0, nthreads = 2, ...){
+brif.default <- function(x, n_numeric_cuts = 31, n_integer_cuts = 31, max_integer_classes = 20, max_depth = 20, min_node_size = 1, ntrees = 200, ps = 0, max_factor_levels = 30, seed = 0, bagging_method = 0, bagging_proportion = 0.9, split_search = 4, search_radius = 5, verbose = 0, nthreads = 2, ...){
 
   # check argument validity
   if(ntrees < 1){
     stop("ntrees must be a positive integer.")
   }
-  if(!split_search %in% c(0,1,2,3)){
-    stop("Invalid value for split_search.")
-  }
+  # if(!split_search %in% c(0,1,2,3,4)){
+  #   stop("Invalid value for split_search.")
+  # }
   if(search_radius < 1){
     stop("Search radius must be a positive integer.")
   }
@@ -220,7 +220,7 @@ brif.default <- function(x, n_numeric_cuts = 31, n_integer_cuts = 31, max_intege
     x <- rbind(x, x_pad)
     n <- nrow(x)
   }
-  if(n == 32 & split_search >= 3){  # need at least two blocks
+  if(n == 32 & split_search >= 1){  # need at least two blocks
     x <- rbind(x,x)  # duplicate x
   }
   n <- nrow(x)
@@ -256,9 +256,9 @@ brif.default <- function(x, n_numeric_cuts = 31, n_integer_cuts = 31, max_intege
 #' 
 #' @param object an object of class "brif" as returned by the brif training function.
 #' @param newdata a data frame. The predictor column names and data types must match those supplied for training. The order of the predictor columns does not matter though. 
-#' @param type a character string indicating the return content. For a classification problem, "score" means the by-class probabilities and "class" means the class labels (i.e., the target variable levels). For regression, the predicted values are returned. #' @param vote_method an integer (0 or 1) specifying the voting method in prediction. 0: each leaf contributes the raw count; 1: each leaf contributes a fraction.
+#' @param type a character string indicating the return content. For a classification problem, "score" means the by-class probabilities and "class" means the class labels (i.e., the target variable levels). For regression, the predicted values are returned. 
 #' @param vote_method an integer (0 or 1) specifying the voting method in prediction. 0: each leaf contributes the raw count and an average is taken on the sum over all leaves; 1: each leaf contributes an intra-node fraction which is then averaged over all leaves with equal weight. 
-#' @param nthreads an integer specifying the number of threads used by the program. Default is 2. This parameter only takes effect on Linux. On Mac OS or Windows, one thread will be used. 
+#' @param nthreads an integer specifying the number of threads used by the program. This parameter only takes effect on systems supporting OpenMP. 
 #' @param ... additional arguments.
 #' @return a data frame or a vector containing the prediction results. For regression, a numeric vector of predicted values will be returned. For classification, if \code{type = "class"}, a character vector of the predicted class labels will be returned; if \code{type = "score"}, a data frame will be returned, in which each column contains the probability of the new case being in the corresponding class. 
 #' 
@@ -363,19 +363,19 @@ predict.brif <- function(object, newdata = NULL, type = c("score", "class"), vot
 #' @param n_numeric_cuts an integer value indicating the maximum number of split points to generate for each numeric variable. 
 #' @param n_integer_cuts an integer value indicating the maximum number of split points to generate for each integer variable. 
 #' @param max_integer_classes an integer value. If the target variable is integer and has more than max_integer_classes unique values in the training data, then the target variable will be grouped into max_integer_classes bins. If the target variable is numeric, then the smaller of max_integer_classes and the number of unique values number of bins will be created on the target variables and the regression problem will be solved as a classification problem. 
-#' @param max_depth an integer specifying the maximum depth of each tree. Default is 10. Maximum is 40. 
-#' @param min_node_size an integer specifying the minimum number of training cases a leaf node must contain. Default is 1. 
+#' @param max_depth an integer specifying the maximum depth of each tree. Maximum is 40. 
+#' @param min_node_size an integer specifying the minimum number of training cases a leaf node must contain. 
 #' @param ntrees an integer specifying the number of trees in the forest. 
 #' @param seed an integer specifying the seed used by the internal random number generator. Default is 0, meaning not to set a seed but to accept the set seed from the calling environment.
 #' @param ps an integer indicating the number of predictors to sample at each node split. Default is 0, meaning to use sqrt(p), where p is the number of predictors in the input. 
 #' @param max_factor_levels an integer. If any factor variables has more than max_factor_levels, the program stops and prompts the user to increase the value of this parameter if the too-many-level factor is indeed intended.
 #' @param bagging_method an integer indicating the bagging sampling method: 0 for sampling without replacement; 1 for sampling with replacement (bootstrapping). 
 #' @param bagging_proportion a numeric scalar between 0 and 1, indicating the proportion of training observations to be used in each tree. 
-#' @param split_search an integer indicating the choice of the split search method. 0: randomly pick a split point (fastest, greatest variance, least effective); 1: perform a greedy search starting from the mid-point; 2: evaluate every available split point and pick the best one; 3: perform a self-regulating local search to prevent over-fitting.
-#' @param search_radius an positive integer indicating the split point search radius. This parameter takes effect only when split_search is 3. 
+#' @param split_search an integer indicating the choice of the split search method. 0: randomly pick a split point; 1: do a local search; 2: random pick subject to regulation; 3: local search subject to regulation; 4 or above: a mix of options 0 to 3. 
+#' @param search_radius an positive integer indicating the split point search radius. This parameter takes effect only in regulated search (split_search = 2 or above). 
 #' @param vote_method an integer (0 or 1) specifying the voting method in prediction. 0: each leaf contributes the raw count and an average is taken on the sum over all leaves; 1: each leaf contributes an intra-node fraction which is then averaged over all leaves with equal weight.  
 #' @param verbose an integer (0 or 1) specifying the verbose level.  
-#' @param nthreads an integer specifying the number of threads used by the program. Default is 2. This parameter takes effect only on systems supporting 'OpenMP'.  
+#' @param nthreads an integer specifying the number of threads used by the program. This parameter takes effect only on systems supporting OpenMP.  
 #' @param ... additional arguments.
 #' @return a data frame or a vector containing the prediction results. See \code{\link{predict.brif}} for details. 
 #'
@@ -388,15 +388,15 @@ predict.brif <- function(object, newdata = NULL, type = c("score", "class"), vot
 #'
 #' @export 
 #' 
-brif.trainpredict <- function(x, newdata, type = c("score","class"), n_numeric_cuts = 31, n_integer_cuts = 31, max_integer_classes = 20, max_depth = 10, min_node_size = 1, ntrees=50, ps = 0, max_factor_levels = 30, seed = 0, bagging_method = 0, bagging_proportion = 0.9, vote_method = 1, split_search = 3, search_radius = 5, verbose = 0, nthreads = 2, ...){
+brif.trainpredict <- function(x, newdata, type = c("score","class"), n_numeric_cuts = 31, n_integer_cuts = 31, max_integer_classes = 20, max_depth = 20, min_node_size = 1, ntrees=200, ps = 0, max_factor_levels = 30, seed = 0, bagging_method = 0, bagging_proportion = 0.9, vote_method = 1, split_search = 4, search_radius = 5, verbose = 0, nthreads = 2, ...){
   
   # check argument validity
   if(ntrees < 1){
     stop("ntrees must be a positive integer.")
   }
-  if(!split_search %in% c(0,1,2,3)){
-    stop("Invalid value for split_search.")
-  }
+  # if(!split_search %in% c(0,1,2,3,4)){
+  #   stop("Invalid value for split_search.")
+  # }
   if(search_radius < 1){
     stop("Search radius must be a positive integer.")
   }
@@ -455,7 +455,7 @@ brif.trainpredict <- function(x, newdata, type = c("score","class"), n_numeric_c
     x <- rbind(x, x_pad)
     n <- nrow(x)
   }
-  if(n == 32 & split_search >= 3){  # need at least two blocks
+  if(n == 32 & split_search >= 1){  # need at least two blocks
     x <- rbind(x,x)  # duplicate x
     n <- nrow(x)
   }
@@ -592,7 +592,7 @@ brifTree <- function(x, ...) UseMethod("brifTree");
 #' 
 brifTree.default <- function(x, depth = 3, n_cuts = 2047, max_integer_classes = 20, max_factor_levels = 30, seed = 0, ...){
 
-  return(brif.default(x, n_numeric_cuts = as.integer(n_cuts), n_integer_cuts = as.integer(n_cuts), max_integer_classes = as.integer(max_integer_classes), max_depth = depth, min_node_size = 1, ntrees = 1, ps = ncol(x), max_factor_levels = as.integer(max_factor_levels), seed = seed, bagging_method = 0, bagging_proportion = 1, split_search = 3, search_radius = as.integer(sqrt(n_cuts)),  verbose = 0, nthreads = 1, ...))
+  return(brif.default(x, n_numeric_cuts = as.integer(n_cuts), n_integer_cuts = as.integer(n_cuts), max_integer_classes = as.integer(max_integer_classes), max_depth = depth, min_node_size = 1, ntrees = 1, ps = ncol(x), max_factor_levels = as.integer(max_factor_levels), seed = seed, bagging_method = 0, bagging_proportion = 1, split_search = 1, search_radius = as.integer(sqrt(n_cuts)),  verbose = 0, nthreads = 1, ...))
   
 }
 

@@ -9,7 +9,7 @@
 #' @param par a list containing all parameters. 
 #' @return a list, of class "brif", containing the trained random forest model.
 rftrain <- function(rdf, par) {
-    .Call(`_brif_rftrain`, rdf, par)
+    .Call('_brif_rftrain', PACKAGE = 'brif', rdf, par)
 }
 
 #' Predict new cases
@@ -22,7 +22,7 @@ rftrain <- function(rdf, par) {
 #' @param nthreads an integer specifying the number of threads to be used in prediction.
 #' @return a data frame containing the predicted values.
 rfpredict <- function(rf, rdf, vote_method, nthreads) {
-    .Call(`_brif_rfpredict`, rf, rdf, vote_method, nthreads)
+    .Call('_brif_rfpredict', PACKAGE = 'brif', rf, rdf, vote_method, nthreads)
 }
 
 #' Print the decision rules of a Brif tree
@@ -31,7 +31,7 @@ rfpredict <- function(rf, rdf, vote_method, nthreads) {
 #' @param which_tree an integer indicating the tree number 
 #' @return No return value. The function is intended for producing a side effect, which prints the decision rules to the standard output.  
 printBrifTree <- function(rf, which_tree) {
-    invisible(.Call(`_brif_printBrifTree`, rf, which_tree))
+    invisible(.Call('_brif_printBrifTree', PACKAGE = 'brif', rf, which_tree))
 }
 
 #' Train a model and predict for newdata in one go
@@ -42,6 +42,6 @@ printBrifTree <- function(rf, which_tree) {
 #' @param par a list containing all parameters.
 #' @return a data frame containing the predicted values.
 rftrainpredict <- function(rdf, rdf_new, par) {
-    .Call(`_brif_rftrainpredict`, rdf, rdf_new, par)
+    .Call('_brif_rftrainpredict', PACKAGE = 'brif', rdf, rdf_new, par)
 }
 

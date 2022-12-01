@@ -18,11 +18,11 @@
 
 \item{newdata}{a data frame. The predictor column names and data types must match those supplied for training. The order of the predictor columns does not matter though.}
 
-\item{type}{a character string indicating the return content. For a classification problem, "score" means the by-class probabilities and "class" means the class labels (i.e., the target variable levels). For regression, the predicted values are returned. #' @param vote_method an integer (0 or 1) specifying the voting method in prediction. 0: each leaf contributes the raw count; 1: each leaf contributes a fraction.}
+\item{type}{a character string indicating the return content. For a classification problem, "score" means the by-class probabilities and "class" means the class labels (i.e., the target variable levels). For regression, the predicted values are returned.}
 
 \item{vote_method}{an integer (0 or 1) specifying the voting method in prediction. 0: each leaf contributes the raw count and an average is taken on the sum over all leaves; 1: each leaf contributes an intra-node fraction which is then averaged over all leaves with equal weight.}
 
-\item{nthreads}{an integer specifying the number of threads used by the program. Default is 2. This parameter only takes effect on Linux. On Mac OS or Windows, one thread will be used.}
+\item{nthreads}{an integer specifying the number of threads used by the program. This parameter only takes effect on systems supporting OpenMP.}
 
 \item{...}{additional arguments.}
 }

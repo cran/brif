@@ -70,7 +70,7 @@ List rftrain(DataFrame rdf, List par){
         char *temp_name = (char*) this_level.get_cstring();
         //add_element((factor_t*)tmp_factor, i, (char*)temp_name);
         //printf("%s \n", temp_name);
-        insert_node(&(((factor_t*)data[j])->levels), temp_name, i+1);  
+        insert_node(&(((factor_t*)data[j])->levels), temp_name, i + ((factor_t*)data[j])->start_index);  
       }
       // re-assign its elements
       ((factor_t*)data[j])->nlevels = fac_levels.length();
@@ -485,7 +485,7 @@ DataFrame rfpredict(List rf, DataFrame rdf, int vote_method, int nthreads){
       this_factor->nlevels = this_j_fac_levels.length();
       fnode_t * level_tree = NULL;  // starting point for insert_node
       for(int c = 0; c < this_j_fac_levels.length(); c++){
-        insert_node(&level_tree, this_j_fac_levels[c], c);
+        insert_node(&level_tree, this_j_fac_levels[c], c + this_factor->start_index);
       }
       this_factor->levels = level_tree;
       model->factor_cuts[j] = this_factor;
@@ -864,7 +864,7 @@ void printBrifTree(List rf, int which_tree){
       this_factor->nlevels = this_j_fac_levels.length();
       fnode_t * level_tree = NULL;  // starting point for insert_node
       for(int c = 0; c < this_j_fac_levels.length(); c++){
-        insert_node(&level_tree, this_j_fac_levels[c], c);
+        insert_node(&level_tree, this_j_fac_levels[c], c + this_factor->start_index);
       }
       this_factor->levels = level_tree;
       model->factor_cuts[j] = this_factor;
@@ -1091,7 +1091,7 @@ DataFrame rftrainpredict(DataFrame rdf, DataFrame rdf_new, List par){
         char *temp_name = (char*) this_level.get_cstring();
         //add_element((factor_t*)tmp_factor, i, (char*)temp_name);
         //printf("%s \n", temp_name);
-        insert_node(&(((factor_t*)data[j])->levels), temp_name, i+1);  
+        insert_node(&(((factor_t*)data[j])->levels), temp_name, i + ((factor_t*)data[j])->start_index);  
       }
       // re-assign its elements
       ((factor_t*)data[j])->nlevels = fac_levels.length();

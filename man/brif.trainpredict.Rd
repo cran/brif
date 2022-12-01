@@ -11,16 +11,16 @@
   n_numeric_cuts = 31,
   n_integer_cuts = 31,
   max_integer_classes = 20,
-  max_depth = 10,
+  max_depth = 20,
   min_node_size = 1,
-  ntrees = 50,
+  ntrees = 200,
   ps = 0,
   max_factor_levels = 30,
   seed = 0,
   bagging_method = 0,
   bagging_proportion = 0.9,
   vote_method = 1,
-  split_search = 3,
+  split_search = 4,
   search_radius = 5,
   verbose = 0,
   nthreads = 2,
@@ -40,9 +40,9 @@
 
 \item{max_integer_classes}{an integer value. If the target variable is integer and has more than max_integer_classes unique values in the training data, then the target variable will be grouped into max_integer_classes bins. If the target variable is numeric, then the smaller of max_integer_classes and the number of unique values number of bins will be created on the target variables and the regression problem will be solved as a classification problem.}
 
-\item{max_depth}{an integer specifying the maximum depth of each tree. Default is 10. Maximum is 40.}
+\item{max_depth}{an integer specifying the maximum depth of each tree. Maximum is 40.}
 
-\item{min_node_size}{an integer specifying the minimum number of training cases a leaf node must contain. Default is 1.}
+\item{min_node_size}{an integer specifying the minimum number of training cases a leaf node must contain.}
 
 \item{ntrees}{an integer specifying the number of trees in the forest.}
 
@@ -58,13 +58,13 @@
 
 \item{vote_method}{an integer (0 or 1) specifying the voting method in prediction. 0: each leaf contributes the raw count and an average is taken on the sum over all leaves; 1: each leaf contributes an intra-node fraction which is then averaged over all leaves with equal weight.}
 
-\item{split_search}{an integer indicating the choice of the split search method. 0: randomly pick a split point (fastest, greatest variance, least effective); 1: perform a greedy search starting from the mid-point; 2: evaluate every available split point and pick the best one; 3: perform a self-regulating local search to prevent over-fitting.}
+\item{split_search}{an integer indicating the choice of the split search method. 0: randomly pick a split point; 1: do a local search; 2: random pick subject to regulation; 3: local search subject to regulation; 4 or above: a mix of options 0 to 3.}
 
-\item{search_radius}{an positive integer indicating the split point search radius. This parameter takes effect only when split_search is 3.}
+\item{search_radius}{an positive integer indicating the split point search radius. This parameter takes effect only in regulated search (split_search = 2 or above).}
 
 \item{verbose}{an integer (0 or 1) specifying the verbose level.}
 
-\item{nthreads}{an integer specifying the number of threads used by the program. Default is 2. This parameter takes effect only on systems supporting 'OpenMP'.}
+\item{nthreads}{an integer specifying the number of threads used by the program. This parameter takes effect only on systems supporting OpenMP.}
 
 \item{...}{additional arguments.}
 }

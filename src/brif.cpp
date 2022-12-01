@@ -110,7 +110,7 @@ int insert_node(fnode_t **tree, char *name, int n){
         }
     } else {
         *tree = (fnode_t*)malloc(sizeof(fnode_t));
-        memcpy((*tree)->name, name, MAX_LEVEL_NAME_LEN);
+        memcpy((*tree)->name, name, MIN(MAX_LEVEL_NAME_LEN, strlen(name)+1));
         (*tree)->val = n;
         (*tree)->count = 1;
         (*tree)->left = NULL;
@@ -164,7 +164,7 @@ void fill_name_array(fnode_t *tree, char **name, int start_index){
 factor_t * create_factor(int n){
     factor_t *f = (factor_t*) malloc(sizeof(factor_t));
     f->n = n;
-    f->start_index = 1;  // default is 0, unless changed manually
+    f->start_index = 1;  // default is 1, unless changed manually
     f->nlevels = 0;
     f->levels = NULL;
     if(n > 0){
@@ -1219,7 +1219,8 @@ void find_best_split(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int min_n
                 }
             }
         }
-    } else if(split_search == 1){
+    } 
+    else if(split_search == 1){
         double best_gini = 1e10;  // avg gini after the split, the smaller the better
         for(int var = 0; var < ps; var++){
             int j = var_index[var];  // j is now the variable index as in data
@@ -1244,49 +1245,20 @@ void find_best_split(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int min_n
                 if(lower_index >= upper_index){
                     continue;  // this var cannot be used
                 }
-                split_index = lower_index + (upper_index - lower_index - 1)/2;  // take the mid point (-1 for binary features)
-                double left_gini;
-                double right_gini;
-                for(int i = 0; i < n_sampled_blocks; i++){
-                    z4[i] = cur[i] & bx[j][split_index][bindex[i]];
-                }
-                int left_size = count1s(z4, n_sampled_blocks, n_discard_bits);
-                int right_size = nobs - left_size;
-                if(left_size < min_node_size || right_size < min_node_size){
-                    continue;  
-                }
-                left_gini = 1;
-                right_gini = 1;
-                // calculate would-be counts for each class in the left node
-                for(int k = 0; k < J; k++){
-                    for(int i=0; i < n_sampled_blocks; i++){
-                        z3[i] = ymat[k][bindex[i]] & z4[i];
-                    }
-                    child_count[k] = count1s(z3, n_sampled_blocks, n_discard_bits);
-                    left_gini -= (1.0*child_count[k]/left_size)*(1.0*child_count[k]/left_size);
-                    right_gini -= (1.0*(count[k] - child_count[k])/right_size)*(1.0*(count[k] - child_count[k])/right_size);
-                } 
-                total_gini = (1.0*left_size/nobs)*left_gini + (1.0*right_size/nobs)*right_gini;            
-                int done_local_search = 0;
-                double neighbor_gini;
-                double best_local_gini = total_gini;
-                int best_local_index = split_index;
-                int neighbor_index;
-                int search_direction = 1;  // 1 up -1 down 
-                int search_offset = 1;
-                while(!done_local_search){
-                    if(split_index + search_direction*search_offset < upper_index && split_index + search_direction*search_offset >= lower_index){
-                        neighbor_index = split_index + search_direction*search_offset;
-                    } else {
-                        break;  // stop local search
-                    }
+                // neighborhood search: try each candidate in a neighborhood centered around the mid-point
+                int mid_index = lower_index + (upper_index - lower_index - 1)/2;  // take the mid point (-1 for binary features)
+                int neighbor_lo = MAX(mid_index - search_radius, lower_index);
+                int neighbor_up = MIN(mid_index + search_radius, upper_index);
+                for(int trial_index = neighbor_lo; trial_index < neighbor_up; trial_index++){
+                    double left_gini;
+                    double right_gini;
                     for(int i = 0; i < n_sampled_blocks; i++){
-                        z4[i] = cur[i] & bx[j][neighbor_index][bindex[i]];
+                        z4[i] = cur[i] & bx[j][trial_index][bindex[i]];
                     }
                     int left_size = count1s(z4, n_sampled_blocks, n_discard_bits);
                     int right_size = nobs - left_size;
                     if(left_size < min_node_size || right_size < min_node_size){
-                        break; 
+                        continue;  
                     }
                     left_gini = 1;
                     right_gini = 1;
@@ -1299,23 +1271,13 @@ void find_best_split(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int min_n
                         left_gini -= (1.0*child_count[k]/left_size)*(1.0*child_count[k]/left_size);
                         right_gini -= (1.0*(count[k] - child_count[k])/right_size)*(1.0*(count[k] - child_count[k])/right_size);
                     } 
-                    neighbor_gini = (1.0*left_size/nobs)*left_gini + (1.0*right_size/nobs)*right_gini;    
-                    if(neighbor_gini < best_local_gini){
-                        best_local_gini = neighbor_gini;
-                        best_local_index = neighbor_index;
-                        search_offset++;
-                    } else {
-                        if(search_offset > 1 || search_direction == -1){
-                            done_local_search = 1;
-                        } else {
-                            // try the other direction
-                            search_direction = -1;
-                        }
-                    }
+                    total_gini = (1.0*left_size/nobs)*left_gini + (1.0*right_size/nobs)*right_gini;  
+                    if(total_gini < best_gini){
+                        best_split_var = j;
+                        best_split_bx = trial_index;
+                        best_gini = total_gini;
+                    }    
                 }
-                split_index = best_local_index;
-                total_gini = best_local_gini;
-
             } else if(var_types[j] == 'f'){
                 int n_tabu_levels = 0;
                 int pass = 0;
@@ -1349,131 +1311,6 @@ void find_best_split(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int min_n
                 int a_few = (int)round(sqrt(1.0*(nb - n_tabu_levels)));
                 //int a_few = nb - n_tabu_levels;
                 shuffle_array_first_ps(candidate_index+n_tabu_levels, nb - n_tabu_levels, a_few);
-                double best_local_gini = 1e20;
-                int best_local_index = candidate_index[n_tabu_levels];  // some meaningful default
-                for(int t = 0; t < a_few; t++){
-                    split_index = candidate_index[n_tabu_levels + t];
-                    for(int i = 0; i < n_sampled_blocks; i++){
-                        z4[i] = cur[i] & bx[j][split_index][bindex[i]];
-                    }
-                    int left_size = count1s(z4, n_sampled_blocks, n_discard_bits);
-                    int right_size = nobs - left_size;
-                    if(left_size < min_node_size || right_size < min_node_size){
-                        continue;
-                    }
-                    double left_gini = 1;
-                    double right_gini = 1;
-                    // calculate would-be counts for each class in the left node
-                    for(int k = 0; k < J; k++){
-                        for(int i=0; i < n_sampled_blocks; i++){
-                            z3[i] = ymat[k][bindex[i]] & z4[i];
-                        }
-                        child_count[k] = count1s(z3, n_sampled_blocks, n_discard_bits);
-                        left_gini -= (1.0*child_count[k]/left_size)*(1.0*child_count[k]/left_size);
-                        right_gini -= (1.0*(count[k] - child_count[k])/right_size)*(1.0*(count[k] - child_count[k])/right_size);
-                    } 
-                    total_gini = (1.0*left_size/nobs)*left_gini + (1.0*right_size/nobs)*right_gini;
-                    if(total_gini < best_local_gini){
-                        best_local_gini = total_gini;
-                        best_local_index = split_index;
-                    }
-                }
-                split_index = best_local_index;
-                total_gini = best_local_gini;
-            }
-
-            if(total_gini < best_gini){
-                best_gini = total_gini;
-                best_split_var = j;
-                best_split_bx = split_index;
-            }
-        }
-    } else if(split_search == 2){
-        double best_gini = 1e10;  // avg gini after the split, the smaller the better
-        for(int var = 0; var < ps; var++){
-            int j = var_index[var];  // j is now the variable index as in data
-            int nb = n_bcols[j];  // how many binary columns this variable has
-            // determine the available binary columns to serve as potential split rule for the current node
-            // for a numeric or an integer variable, knock out unavailable ranges
-            // for a factor variable, if the current node is in the left branch of an ancestor that used this factor variable to split, this variable is not eligible any more
-            // if the current node is in the right branch of such an ancestor, the used levels in the path are not eligible for selection
-            int split_index;
-            double total_gini = 1e10;
-            if(var_types[j] == 'n' || var_types[j] == 'i'){
-                int lower_index = 0;  // inclusive
-                int upper_index = nb;  // noninclusive
-                // search the split path
-                for(int d = 0; d < depth; d++){
-                    if(path_var[d] == j){
-                        upper_index = path_bx[d];
-                    } else if(-path_var[d] == j){
-                        lower_index = path_bx[d] + 1;
-                    }
-                }
-                if(lower_index >= upper_index){
-                    continue;  // this var cannot be used
-                }
-                // evaluate all indexes between lower and upper bounds and choose the best one
-                for(int trial_index = lower_index; trial_index < upper_index; trial_index++){
-                    double left_gini;
-                    double right_gini;
-                    for(int i = 0; i < n_sampled_blocks; i++){
-                        z4[i] = cur[i] & bx[j][trial_index][bindex[i]];
-                    }
-                    int left_size = count1s(z4, n_sampled_blocks, n_discard_bits);
-                    int right_size = nobs - left_size;
-                    if(left_size < min_node_size || right_size < min_node_size){
-                        continue;  
-                    }
-                    left_gini = 1;
-                    right_gini = 1;
-                    // calculate would-be counts for each class in the left node
-                    for(int k = 0; k < J; k++){
-                        for(int i=0; i < n_sampled_blocks; i++){
-                            z3[i] = ymat[k][bindex[i]] & z4[i];
-                        }
-                        child_count[k] = count1s(z3, n_sampled_blocks, n_discard_bits);
-                        left_gini -= (1.0*child_count[k]/left_size)*(1.0*child_count[k]/left_size);
-                        right_gini -= (1.0*(count[k] - child_count[k])/right_size)*(1.0*(count[k] - child_count[k])/right_size);
-                    } 
-                    total_gini = (1.0*left_size/nobs)*left_gini + (1.0*right_size/nobs)*right_gini;   
-                    if(total_gini < best_gini){
-                        best_split_var = j;
-                        best_split_bx = trial_index;
-                        best_gini = total_gini;
-                    }
-                }
-            } else if(var_types[j] == 'f'){
-                int n_tabu_levels = 0;
-                int pass = 0;
-                for(int d = 0; d < depth; d++){
-                    if(path_var[d] == j){
-                        pass = 1; 
-                        break;
-                    } else if(-path_var[d] == j){
-                        candidate_index[n_tabu_levels] = path_bx[d];
-                        n_tabu_levels += 1;
-                    }
-                }
-                if(pass == 1 || n_tabu_levels == nb){
-                    continue;  // this var cannot be used
-                }
-                int b_pos = n_tabu_levels;
-                for(int b = 0; b < nb; b++){
-                    int b_good = 1;
-                    for(int t = 0; t < n_tabu_levels; t++){
-                        if(b == candidate_index[t]){
-                            b_good = 0;
-                            break;
-                        }
-                    }
-                    if(b_good){
-                        candidate_index[b_pos] = b;
-                        b_pos += 1;
-                    }
-                }
-                int a_few = nb - n_tabu_levels;  // check all available split points, and no need to shuffle
-                //shuffle_array_first_ps(candidate_index+n_tabu_levels, nb - n_tabu_levels, a_few);
                 for(int t = 0; t < a_few; t++){
                     split_index = candidate_index[n_tabu_levels + t];
                     for(int i = 0; i < n_sampled_blocks; i++){
@@ -1503,9 +1340,236 @@ void find_best_split(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int min_n
                     }
                 }
             }
+        }
+    } 
+    else if(split_search == 2){
+        // Use half data to evaluate gini and use the other half to test label prediction
+        // If the majority class on the validation set does not agree with that on the training set, abandon the candidate split
+        double best_gini = 1e10;  // avg gini after the split, the smaller the better
+        
+        int n_train_blocks = n_sampled_blocks / 2;
+        int n_valid_blocks = n_sampled_blocks - n_train_blocks;
+        // get the count of classes for the training half and validation half separately    
+
+        memset(train_count, 0, J*sizeof(int));
+        memset(valid_count, 0, J*sizeof(int));
+        int nobs_train = 0;
+        int nobs_valid = 0;
+
+        for(int k = 0; k < J; k++){
+            for(int i=0; i < n_sampled_blocks; i++){
+                z4[i] = ymat[k][bindex[i]] & cur[i];
+            }
+            train_count[k] = count1s(z4, n_train_blocks, n_discard_bits);
+            nobs_train += train_count[k]; 
+            valid_count[k] = count1s(z4+n_train_blocks, n_valid_blocks, n_discard_bits);
+            nobs_valid += valid_count[k];
+        }
+
+        for(int var = 0; var < ps; var++){
+            int j = var_index[var];  // j is now the variable index as in data
+            int nb = n_bcols[j];  // how many binary columns this variable has
+            // determine the available binary columns to serve as potential split rule for the current node
+            // for a numeric or an integer variable, knock out unavailable ranges
+            // for a factor variable, if the current node is in the left branch of an ancestor that used this factor variable to split, this variable is not eligible any more
+            // if the current node is in the right branch of such an ancestor, the used levels in the path are not eligible for selection
+            int split_index;
+            double total_gini = 1e11;
+            if(var_types[j] == 'n' || var_types[j] == 'i'){
+                int lower_index = 0;  // inclusive
+                int upper_index = nb;  // noninclusive
+                // search the split path
+                for(int d = 0; d < depth; d++){
+                    if(path_var[d] == j){
+                        upper_index = path_bx[d];
+                    } else if(-path_var[d] == j){
+                        lower_index = path_bx[d] + 1;
+                    }
+                }
+                if(lower_index >= upper_index){
+                    continue;  // this var cannot be used
+                }
+
+                split_index = lower_index + (int) floor(unif_rand() * (upper_index - lower_index));  // take a random point
+                double train_left_gini;
+                double train_right_gini;
+                double valid_left_gini;
+                double valid_right_gini;
+                for(int i = 0; i < n_sampled_blocks; i++){
+                    z4[i] = cur[i] & bx[j][split_index][bindex[i]];
+                }
+                // use first half to train, second half to validate
+                int train_left_size = count1s(z4, n_train_blocks, n_discard_bits);
+                int train_right_size = nobs_train - train_left_size;
+                int valid_left_size = count1s(z4+n_train_blocks, n_valid_blocks, n_discard_bits);
+                int valid_right_size = nobs_valid - valid_left_size;
+
+                if(train_left_size < min_node_size || train_right_size < min_node_size
+                    || valid_left_size < min_node_size || valid_right_size < min_node_size){
+                    continue;  
+                }
+                train_left_gini = 1;
+                train_right_gini = 1;
+                valid_left_gini = 1;
+                valid_right_gini = 1;
+                int train_left_label = 0;
+                int train_right_label = 0;
+                int valid_left_label = 0;
+                int valid_right_label = 0;
+                int train_left_max = 0;
+                int train_right_max = 0;
+                int valid_left_max = 0;
+                int valid_right_max = 0;
+                // calculate would-be counts for each class in the left node
+                for(int k = 0; k < J; k++){
+                    for(int i=0; i < n_sampled_blocks; i++){
+                        z3[i] = ymat[k][bindex[i]] & z4[i];
+                    }
+                    // get train part
+                    child_count[k] = count1s(z3, n_train_blocks, n_discard_bits);
+                    train_left_gini -= (1.0*child_count[k]/train_left_size)*(1.0*child_count[k]/train_left_size);
+                    train_right_gini -= (1.0*(train_count[k] - child_count[k])/train_right_size)*(1.0*(train_count[k] - child_count[k])/train_right_size);
+                    if(child_count[k] > train_left_max){
+                        train_left_max = child_count[k];
+                        train_left_label = k;
+                    }
+                    if(train_count[k] - child_count[k] > train_right_max){
+                        train_right_max = train_count[k] - child_count[k];
+                        train_right_label = k;
+                    }
+                    // get valid part
+                    child_count[k] = count1s(z3+n_train_blocks, n_valid_blocks, n_discard_bits);
+                    valid_left_gini -= (1.0*child_count[k]/valid_left_size)*(1.0*child_count[k]/valid_left_size);
+                    valid_right_gini -= (1.0*(valid_count[k] - child_count[k])/valid_right_size)*(1.0*(valid_count[k] - child_count[k])/valid_right_size);
+                    if(child_count[k] > valid_left_max){
+                        valid_left_max = child_count[k];
+                        valid_left_label = k;
+                    }
+                    if(valid_count[k] - child_count[k] > valid_right_max){
+                        valid_right_max = valid_count[k] - child_count[k];
+                        valid_right_label = k;
+                    }
+                } 
+                if(train_left_label != valid_left_label || train_right_label != valid_right_label){
+                    total_gini = 1e11;
+                } else {
+                    total_gini = (1.0*train_left_size/nobs_train)*train_left_gini + (1.0*train_right_size/nobs_train)*train_right_gini
+                                +(1.0*valid_left_size/nobs_valid)*valid_left_gini + (1.0*valid_right_size/nobs_valid)*valid_right_gini; 
+                }
+
+                if(total_gini < best_gini){
+                    best_split_var = j;
+                    best_split_bx = split_index;
+                    best_gini = total_gini;
+                }
+                
+            } else if(var_types[j] == 'f'){
+                int n_tabu_levels = 0;
+                int pass = 0;
+                for(int d = 0; d < depth; d++){
+                    if(path_var[d] == j){
+                        pass = 1; 
+                        break;
+                    } else if(-path_var[d] == j){
+                        candidate_index[n_tabu_levels] = path_bx[d];
+                        n_tabu_levels += 1;
+                    }
+                }
+                if(pass == 1 || n_tabu_levels == nb){
+                    continue;  // this var cannot be used
+                }
+                int b_pos = n_tabu_levels;
+                for(int b = 0; b < nb; b++){
+                    int b_good = 1;
+                    for(int t = 0; t < n_tabu_levels; t++){
+                        if(b == candidate_index[t]){
+                            b_good = 0;
+                            break;
+                        }
+                    }
+                    if(b_good){
+                        candidate_index[b_pos] = b;
+                        b_pos += 1;
+                    }
+                }
+                // randomly sample an available index
+                split_index = candidate_index[n_tabu_levels + (int)floor(unif_rand() * (nb - n_tabu_levels))];
+                double train_left_gini;
+                double train_right_gini;
+                double valid_left_gini;
+                double valid_right_gini;
+                for(int i = 0; i < n_sampled_blocks; i++){
+                    z4[i] = cur[i] & bx[j][split_index][bindex[i]];
+                }
+                // use first half to train, second half to validate
+                int train_left_size = count1s(z4, n_train_blocks, n_discard_bits);
+                int train_right_size = nobs_train - train_left_size;
+                int valid_left_size = count1s(z4+n_train_blocks, n_valid_blocks, n_discard_bits);
+                int valid_right_size = nobs_valid - valid_left_size;
+
+                if(train_left_size < min_node_size || train_right_size < min_node_size
+                    || valid_left_size < min_node_size || valid_right_size < min_node_size){
+                    continue;  
+                }
+                train_left_gini = 1;
+                train_right_gini = 1;
+                valid_left_gini = 1;
+                valid_right_gini = 1;
+                int train_left_label = 0;
+                int train_right_label = 0;
+                int valid_left_label = 0;
+                int valid_right_label = 0;
+                int train_left_max = 0;
+                int train_right_max = 0;
+                int valid_left_max = 0;
+                int valid_right_max = 0;
+                // calculate would-be counts for each class in the left node
+                for(int k = 0; k < J; k++){
+                    for(int i=0; i < n_sampled_blocks; i++){
+                        z3[i] = ymat[k][bindex[i]] & z4[i];
+                    }
+                    // get train part
+                    child_count[k] = count1s(z3, n_train_blocks, n_discard_bits);
+                    train_left_gini -= (1.0*child_count[k]/train_left_size)*(1.0*child_count[k]/train_left_size);
+                    train_right_gini -= (1.0*(train_count[k] - child_count[k])/train_right_size)*(1.0*(train_count[k] - child_count[k])/train_right_size);
+                    if(child_count[k] > train_left_max){
+                        train_left_max = child_count[k];
+                        train_left_label = k;
+                    }
+                    if(train_count[k] - child_count[k] > train_right_max){
+                        train_right_max = train_count[k] - child_count[k];
+                        train_right_label = k;
+                    }
+                    // get valid part
+                    child_count[k] = count1s(z3+n_train_blocks, n_valid_blocks, n_discard_bits);
+                    valid_left_gini -= (1.0*child_count[k]/valid_left_size)*(1.0*child_count[k]/valid_left_size);
+                    valid_right_gini -= (1.0*(valid_count[k] - child_count[k])/valid_right_size)*(1.0*(valid_count[k] - child_count[k])/valid_right_size);
+                    if(child_count[k] > valid_left_max){
+                        valid_left_max = child_count[k];
+                        valid_left_label = k;
+                    }
+                    if(valid_count[k] - child_count[k] > valid_right_max){
+                        valid_right_max = valid_count[k] - child_count[k];
+                        valid_right_label = k;
+                    }
+                } 
+                if(train_left_label != valid_left_label || train_right_label != valid_right_label){
+                    total_gini = 1e11;
+                } else {
+                    total_gini = (1.0*train_left_size/nobs_train)*train_left_gini + (1.0*train_right_size/nobs_train)*train_right_gini
+                                +(1.0*valid_left_size/nobs_valid)*valid_left_gini + (1.0*valid_right_size/nobs_valid)*valid_right_gini;  
+                }
+
+                if(total_gini < best_gini){
+                    best_gini = total_gini;
+                    best_split_var = j;
+                    best_split_bx = split_index;
+                }
+            }
         }        
-    } else if(split_search == 3){
-        // Similar to option 1, but use half data to evaluate gini and use the other half to test label prediction
+    }
+    else if(split_search == 3){
+        // Use half data to evaluate gini and use the other half to test label prediction
         // If the majority class on the validation set does not agree with that on the training set, abandon the candidate split
         double best_gini = 1e10;  // avg gini after the split, the smaller the better
         
@@ -1784,7 +1848,7 @@ dt_node_t* build_tree(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int ps, 
     int *child_count = (int*)malloc(J*sizeof(int));
     int *train_count = NULL;
     int *valid_count = NULL;
-    if(split_search == 3){
+    if(split_search >= 2){
         train_count = (int*)malloc(J*sizeof(int));
         valid_count = (int*)malloc(J*sizeof(int));
     }
@@ -1946,7 +2010,7 @@ dt_node_t* build_tree(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int ps, 
     free(z3);
     free(z4);
     free(child_count);
-    if(split_search == 3){
+    if(split_search >= 2){
         free(train_count);
         free(valid_count);
     }
@@ -2157,6 +2221,8 @@ void delete_data(data_frame_t *df){
 void delete_yc(ycode_t * yc){
     if(yc->ycuts_int != NULL) free(yc->ycuts_int);
     if(yc->ycuts_num != NULL) free(yc->ycuts_num);
+    if(yc->yvalues_int != NULL) free(yc->yvalues_int);
+    if(yc->yvalues_num != NULL) free(yc->yvalues_num);
     if(yc->yavg != NULL) free(yc->yavg);
     if(yc->ymat != NULL){
         for(int c = 0; c < yc->nlevels; c++){
@@ -2401,6 +2467,10 @@ void build_forest(bx_info_t *bxall, ycode_t *yc, rf_model_t **model, int ps, int
     int t;
     #pragma omp parallel for
     for(t = 0; t < ntrees; t++){
+        // if split_search is >= 2, alternate between 0 and 1
+        if(split_search >=4){
+            split_search = t % 4;
+        }
         trees[t] = build_tree(bxall, yc, *model, ps, max_depth, min_node_size, bagging_method, bagging_proportion, split_search, search_radius);
     }
 
