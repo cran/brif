@@ -112,13 +112,12 @@ List rftrain(DataFrame rdf, List par){
   
   make_cuts(train_df, &model, n_numeric_cuts, n_integer_cuts); 
   
-  bx_info_t *bx_train = make_bx(train_df, &model);
-  ycode_t *yc_train = make_yc(train_df, &model, max_integer_classes);
+  bx_info_t *bx_train = make_bx(train_df, &model, nthreads);
+  ycode_t *yc_train = make_yc(train_df, &model, max_integer_classes, nthreads);
   
   
   if(ps == 0) ps = (int)(round(sqrt(model->p)));
   build_forest(bx_train, yc_train, &model, ps, max_depth, min_node_size, ntrees, nthreads, bagging_method, bagging_proportion, split_search, search_radius);
-  
   if(verbose){
     Rprintf("Tree 0 printout:\n");
     printTree(model->trees[0], 0, model->yc->nlevels);
@@ -705,7 +704,7 @@ DataFrame rfpredict(List rf, DataFrame rdf, int vote_method, int nthreads){
     }    
   }
   
-  bx_info_t *bx_test = make_bx(test_df, &model);
+  bx_info_t *bx_test = make_bx(test_df, &model, nthreads);
   predict(model, bx_test, score, vote_method, nthreads);
   delete_bx(bx_test, model);
 
@@ -1132,14 +1131,13 @@ DataFrame rftrainpredict(DataFrame rdf, DataFrame rdf_new, List par){
   
   
   make_cuts(train_df, &model, n_numeric_cuts, n_integer_cuts); 
-  bx_info_t *bx_train = make_bx(train_df, &model);
-  ycode_t *yc_train = make_yc(train_df, &model, max_integer_classes);
+  bx_info_t *bx_train = make_bx(train_df, &model, nthreads);
+  ycode_t *yc_train = make_yc(train_df, &model, max_integer_classes, nthreads);
   
   free(train_df);
   
   if(ps == 0) ps = (int)(round(sqrt(model->p)));
   build_forest(bx_train, yc_train, &model, ps, max_depth, min_node_size, ntrees, nthreads, bagging_method, bagging_proportion, split_search, search_radius);
-   
   delete_bx(bx_train, model);
   delete_yc(yc_train);
 
@@ -1286,7 +1284,7 @@ DataFrame rftrainpredict(DataFrame rdf, DataFrame rdf_new, List par){
     }    
   }
   
-  bx_info_t *bx_test = make_bx(test_df, &model);
+  bx_info_t *bx_test = make_bx(test_df, &model, nthreads);
   predict(model, bx_test, score, vote_method, nthreads);
   delete_bx(bx_test, model);
 

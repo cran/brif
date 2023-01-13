@@ -10,6 +10,7 @@
 #include <omp.h>
 #endif
 
+
 #include <R.h>  
 #ifdef ENABLE_NLS
 #include <libintl.h>
@@ -159,6 +160,7 @@ typedef struct {
     void **data;
 } data_frame_t;
 
+void fillSetBitTable(unsigned char table[], int n);
 dt_node_t* newNode(dt_node_t* parent, int J, unsigned branch);
 void deleteTree(dt_node_t* root);
 void deleteLeaves(dt_leaf_t* root);
@@ -191,25 +193,25 @@ integer_t * integer_cutpoints_2(integer_t *x, int n, int *n_cuts, int *yindex, i
 // set the k-th bit from left of x 
 void set_bit(bitblock_t *x, int k);
 
-bitblock_t ** binarize_numeric(numeric_t *x, numeric_t *cuts, int n, int n_blocks, int n_cuts);
-bitblock_t ** binarize_factor_index(int *index, int n, int n_blocks, int n_levels, int start_index);
+bitblock_t ** binarize_numeric(numeric_t *x, numeric_t *cuts, int n, int n_blocks, int n_cuts, int nthreads);
+bitblock_t ** binarize_factor_index(int *index, int n, int n_blocks, int n_levels, int start_index, int nthreads);
 factor_t * factor_cutpoints(factor_t *f, int n, int *n_cuts);
-bitblock_t ** binarize_factor(factor_t *f, int n, int n_blocks, int *n_cuts);
-bitblock_t ** binarize_integer(integer_t *x, integer_t *cuts, int n, int n_blocks, int n_cuts);
+bitblock_t ** binarize_factor(factor_t *f, int n, int n_blocks, int *n_cuts, int nthreads);
+bitblock_t ** binarize_integer(integer_t *x, integer_t *cuts, int n, int n_blocks, int n_cuts, int nthreads);
 
 void delete_bmat(bitblock_t **bmat, int ncol);
 
-ycode_t * codify_integer_target(integer_t *y, int n, int n_blocks, int max_integer_classes);
-ycode_t * codify_factor_target(factor_t *y, int n, int n_blocks, int max_integer_classes);
-ycode_t * codify_numeric_target(numeric_t *y, int n, int n_blocks, int max_integer_classes);
+ycode_t * codify_integer_target(integer_t *y, int n, int n_blocks, int max_integer_classes, int nthreads);
+ycode_t * codify_factor_target(factor_t *y, int n, int n_blocks, int max_integer_classes, int nthreads);
+ycode_t * codify_numeric_target(numeric_t *y, int n, int n_blocks, int max_integer_classes, int nthreads);
 
 // copy yc ignoring ymat
 ycode_t * copy_ycode(ycode_t * yc);
 
 int countSetBits(bitblock_t n);
-int count1s(bitblock_t *x, int n_blocks, int n_discard_bits);
+int count1s(bitblock_t *x, int n_blocks);
 void shuffle_array_first_ps(int *arr, int n, int ps);
-void find_best_split(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int min_node_size, int split_search, dt_node_t * cur_node, bitblock_t *cur, int *bindex, int n_sampled_blocks, int *var_index, int actual_ps, bitblock_t *z3, bitblock_t *z4, int *count, int *child_count, int *train_count, int *valid_count, int search_radius, int *candidate_index, int *split_var, int* split_bx);
+void find_best_split(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int min_node_size, int split_search, dt_node_t * cur_node, bitblock_t *useful_cur, int *uindex, int n_useful_blocks, int *var_index, int actual_ps, bitblock_t *z3, bitblock_t *z4, int *count, int *child_count, int *train_count, int *valid_count, int search_radius, int *candidate_index, int *split_var, int* split_bx);
 void bootstrap_index_array(int n, int *array);
 dt_node_t* build_tree(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int ps, int max_depth, int min_node_size, int bagging_method, double bagging_proportion, int split_search, int search_radius);
 void predict_tree(dt_node_t *tree, bitblock_t ***bx, int **pred_tree, int J, int n_blocks);
@@ -222,13 +224,12 @@ void delete_data(data_frame_t *df);
 void delete_yc(ycode_t * yc);
 void delete_model(rf_model_t *model);
 void make_cuts(data_frame_t *train, rf_model_t **model, int n_numeric_cuts, int n_integer_cuts);
-bx_info_t * make_bx(data_frame_t * train, rf_model_t ** model);
+bx_info_t * make_bx(data_frame_t * train, rf_model_t ** model, int nthreads);
 void delete_bx(bx_info_t *bxall, rf_model_t *model);
-ycode_t * make_yc(data_frame_t *train, rf_model_t **model, int max_integer_classes);
+ycode_t * make_yc(data_frame_t *train, rf_model_t **model, int max_integer_classes, int nthreads);
 void build_forest(bx_info_t *bxall, ycode_t *yc, rf_model_t **model, int ps, int max_depth, int min_node_size, int ntrees, int nthreads, int bagging_method, double bagging_proportion, int split_search, int search_radius);
 void flatten_tree(dt_node_t *tree, dt_leaf_t **leaves, int J);
 void flatten_model(rf_model_t **model, int nthreads);
 void printTree(dt_node_t * tree, unsigned indent, int J);
 void fill_name_addr_array(fnode_t *tree, char **name, int start_index);
 void printRules(rf_model_t *model, int which_tree);
-

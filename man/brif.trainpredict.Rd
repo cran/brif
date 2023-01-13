@@ -24,6 +24,11 @@
   search_radius = 5,
   verbose = 0,
   nthreads = 2,
+  CUDA = 0,
+  CUDA_blocksize = 128,
+  CUDA_n_lb_GPU = 20480,
+  cubrif_main = "cubrif_main.exe",
+  tmp_file_prefix = "cbf",
   ...
 )
 }
@@ -66,6 +71,16 @@
 
 \item{nthreads}{an integer specifying the number of threads used by the program. This parameter takes effect only on systems supporting OpenMP.}
 
+\item{CUDA}{an integer (0, 1 or 2). 0: Do not use GPU. 1: Use GPU to build the forest. 2: Hybrid mode: Use GPU to split a node only when the node size is greater than CUDA_n_lb_GPU.}
+
+\item{CUDA_blocksize}{a positive integer specifying the CUDA thread block size, must be a multiple of 64 up to 1024.}
+
+\item{CUDA_n_lb_GPU}{a positive integer. The number of training cases must be greater than this number to enable the GPU computing when GPU = 2.}
+
+\item{cubrif_main}{a string containing the path and name of the cubrif executable (see https://github.com/profyliu/cubrif for how to build it).}
+
+\item{tmp_file_prefix}{a string for the path and prefix of temporary files created when CUDA is used.}
+
 \item{...}{additional arguments.}
 }
 \value{
@@ -73,6 +88,8 @@ a data frame or a vector containing the prediction results. See \code{\link{pred
 }
 \description{
 If the model is built to predict for just one test data set (newdata), then this function should be used instead of the \code{brif} and \code{predict.brif} pipeline. Transporting the model object between the training and prediction functions through saving and loading the \code{brif} object takes a subtantial amount of time, and using the \code{pred.trainpredict} function eliminates such time-consuming operations. This function will be automatically invoked by the \code{\link[brif]{brif}} function when the newdata argument is supplied there.
+If GPU is used for training (GPU = 1 or 2), the total execution time of this function includes writing and reading temporary data files. To see timing of different steps, use verbose = 1. 
+Note: Using GPU for training can improve training time only when the number of rows in the training data is extremely large, e.g., over 1 million. Even in such cases, GPU = 2 (hybrid mode) is recommended over GPU = 1 (force using GPU).
 }
 \examples{
 trainset <- sample(1:nrow(iris), 0.5*nrow(iris))

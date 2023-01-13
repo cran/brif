@@ -189,6 +189,7 @@ brif.default <- function(x, n_numeric_cuts = 31, n_integer_cuts = 31, max_intege
   if(seed < 0){
     stop("seed must be a positive integer.")
   }
+
   
   n <- nrow(x)
   varnames <- colnames(x)
@@ -353,43 +354,99 @@ predict.brif <- function(object, newdata = NULL, type = c("score", "class"), vot
   }
 }
 
-#' Train a model and use it to predict new cases
-#' 
-#' If the model is built to predict for just one test data set (newdata), then this function should be used instead of the \code{brif} and \code{predict.brif} pipeline. Transporting the model object between the training and prediction functions through saving and loading the \code{brif} object takes a subtantial amount of time, and using the \code{pred.trainpredict} function eliminates such time-consuming operations. This function will be automatically invoked by the \code{\link[brif]{brif}} function when the newdata argument is supplied there. 
 
-#' @param x a data frame containing the training data set. The first column is taken as the target variable and all other columns are used as predictors. 
-#' @param newdata a data frame containing the new data to be predicted. All columns in x (except for the first column which is the target variable) must be present in newdata and the data types must match. 
-#' @param type a character string specifying the prediction format. Available values include "score" and "class". Default is "score". 
-#' @param n_numeric_cuts an integer value indicating the maximum number of split points to generate for each numeric variable. 
-#' @param n_integer_cuts an integer value indicating the maximum number of split points to generate for each integer variable. 
-#' @param max_integer_classes an integer value. If the target variable is integer and has more than max_integer_classes unique values in the training data, then the target variable will be grouped into max_integer_classes bins. If the target variable is numeric, then the smaller of max_integer_classes and the number of unique values number of bins will be created on the target variables and the regression problem will be solved as a classification problem. 
-#' @param max_depth an integer specifying the maximum depth of each tree. Maximum is 40. 
-#' @param min_node_size an integer specifying the minimum number of training cases a leaf node must contain. 
-#' @param ntrees an integer specifying the number of trees in the forest. 
+
+#' Write data set to file
+#' @param df a data frame
+#' @param resp_col_num an integer indicating the column number (in df) of the response variable. For test data without the response column, use 0 here. 
+#' @param outfile a character string specifying the file name prefix of output files
+#' @return a list of four elements. n: number of rows, p: number of predictors, data_file: name of the data file, config_file: name of the configuration file
+#' @export
+#'
+brif_write_data <- function(df, resp_col_num = 1, outfile='data'){
+  n = nrow(df)
+  p = ncol(df)
+  if(resp_col_num > 0)
+    new_order <- c(resp_col_num, setdiff(1:p, resp_col_num))
+  else
+    new_order <- 1:p
+  
+  df = df[,new_order]
+  outdata = paste0(outfile,'_data.txt')
+  outconfig = paste0(outfile, '_config.txt')
+  vartypes = sapply(df, class)
+  varlabels = colnames(df)
+  # write data file
+  sink(outdata)
+  #print(vartypes, quote = FALSE, right = FALSE)
+  for(i in 1:length(vartypes)){
+    cat(trimws(varlabels[i]))
+    cat(" ")
+  }
+  cat("\n")
+  for(i in 1:length(vartypes)){
+    cat(trimws(vartypes[i]))
+    cat(" ")
+  }
+  cat("\n")
+  sink()
+  utils::write.table(df, file = outdata, append = TRUE, row.names = FALSE, col.names = FALSE, quote = FALSE)
+  # write config file
+  sink(outconfig)
+  cat(paste("n", n, "\n"))
+  cat(paste("p", p-1, "\n"))
+  cat(paste("inputfile", outdata, "\n"))
+  sink()
+  return(list(n=n, p=ifelse(resp_col_num > 0, p-1, p), data_file=outdata, config_file=outconfig))
+}
+
+
+
+#' Train a model and use it to predict new cases
+#'
+#' If the model is built to predict for just one test data set (newdata), then this function should be used instead of the \code{brif} and \code{predict.brif} pipeline. Transporting the model object between the training and prediction functions through saving and loading the \code{brif} object takes a subtantial amount of time, and using the \code{pred.trainpredict} function eliminates such time-consuming operations. This function will be automatically invoked by the \code{\link[brif]{brif}} function when the newdata argument is supplied there.
+#' If GPU is used for training (GPU = 1 or 2), the total execution time of this function includes writing and reading temporary data files. To see timing of different steps, use verbose = 1. 
+#' Note: Using GPU for training can improve training time only when the number of rows in the training data is extremely large, e.g., over 1 million. Even in such cases, GPU = 2 (hybrid mode) is recommended over GPU = 1 (force using GPU). 
+#'
+#' @param x a data frame containing the training data set. The first column is taken as the target variable and all other columns are used as predictors.
+#' @param newdata a data frame containing the new data to be predicted. All columns in x (except for the first column which is the target variable) must be present in newdata and the data types must match.
+#' @param type a character string specifying the prediction format. Available values include "score" and "class". Default is "score".
+#' @param n_numeric_cuts an integer value indicating the maximum number of split points to generate for each numeric variable.
+#' @param n_integer_cuts an integer value indicating the maximum number of split points to generate for each integer variable.
+#' @param max_integer_classes an integer value. If the target variable is integer and has more than max_integer_classes unique values in the training data, then the target variable will be grouped into max_integer_classes bins. If the target variable is numeric, then the smaller of max_integer_classes and the number of unique values number of bins will be created on the target variables and the regression problem will be solved as a classification problem.
+#' @param max_depth an integer specifying the maximum depth of each tree. Maximum is 40.
+#' @param min_node_size an integer specifying the minimum number of training cases a leaf node must contain.
+#' @param ntrees an integer specifying the number of trees in the forest.
 #' @param seed an integer specifying the seed used by the internal random number generator. Default is 0, meaning not to set a seed but to accept the set seed from the calling environment.
-#' @param ps an integer indicating the number of predictors to sample at each node split. Default is 0, meaning to use sqrt(p), where p is the number of predictors in the input. 
+#' @param ps an integer indicating the number of predictors to sample at each node split. Default is 0, meaning to use sqrt(p), where p is the number of predictors in the input.
 #' @param max_factor_levels an integer. If any factor variables has more than max_factor_levels, the program stops and prompts the user to increase the value of this parameter if the too-many-level factor is indeed intended.
-#' @param bagging_method an integer indicating the bagging sampling method: 0 for sampling without replacement; 1 for sampling with replacement (bootstrapping). 
-#' @param bagging_proportion a numeric scalar between 0 and 1, indicating the proportion of training observations to be used in each tree. 
-#' @param split_search an integer indicating the choice of the split search method. 0: randomly pick a split point; 1: do a local search; 2: random pick subject to regulation; 3: local search subject to regulation; 4 or above: a mix of options 0 to 3. 
-#' @param search_radius an positive integer indicating the split point search radius. This parameter takes effect only in regulated search (split_search = 2 or above). 
+#' @param bagging_method an integer indicating the bagging sampling method: 0 for sampling without replacement; 1 for sampling with replacement (bootstrapping).
+#' @param bagging_proportion a numeric scalar between 0 and 1, indicating the proportion of training observations to be used in each tree.
+#' @param split_search an integer indicating the choice of the split search method. 0: randomly pick a split point; 1: do a local search; 2: random pick subject to regulation; 3: local search subject to regulation; 4 or above: a mix of options 0 to 3.
+#' @param search_radius an positive integer indicating the split point search radius. This parameter takes effect only in regulated search (split_search = 2 or above).
 #' @param vote_method an integer (0 or 1) specifying the voting method in prediction. 0: each leaf contributes the raw count and an average is taken on the sum over all leaves; 1: each leaf contributes an intra-node fraction which is then averaged over all leaves with equal weight.  
 #' @param verbose an integer (0 or 1) specifying the verbose level.  
 #' @param nthreads an integer specifying the number of threads used by the program. This parameter takes effect only on systems supporting OpenMP.  
+#' @param CUDA an integer (0, 1 or 2). 0: Do not use GPU. 1: Use GPU to build the forest. 2: Hybrid mode: Use GPU to split a node only when the node size is greater than CUDA_n_lb_GPU.
+#' @param CUDA_blocksize a positive integer specifying the CUDA thread block size, must be a multiple of 64 up to 1024.
+#' @param CUDA_n_lb_GPU a positive integer. The number of training cases must be greater than this number to enable the GPU computing when GPU = 2.
+#' @param cubrif_main a string containing the path and name of the cubrif executable (see https://github.com/profyliu/cubrif for how to build it).
+#' @param tmp_file_prefix a string for the path and prefix of temporary files created when CUDA is used.
 #' @param ... additional arguments.
-#' @return a data frame or a vector containing the prediction results. See \code{\link{predict.brif}} for details. 
+#' @return a data frame or a vector containing the prediction results. See \code{\link{predict.brif}} for details.
 #'
-#' @examples 
+#' @examples
 #' trainset <- sample(1:nrow(iris), 0.5*nrow(iris))
 #' validset <- setdiff(1:nrow(iris), trainset)
-#' 
+#'
 #' pred_score <- brif.trainpredict(iris[trainset, c(5,1:4)], iris[validset, c(1:4)], type = 'score')
 #' pred_label <- colnames(pred_score)[apply(pred_score, 1, which.max)]
 #'
-#' @export 
-#' 
-brif.trainpredict <- function(x, newdata, type = c("score","class"), n_numeric_cuts = 31, n_integer_cuts = 31, max_integer_classes = 20, max_depth = 20, min_node_size = 1, ntrees=200, ps = 0, max_factor_levels = 30, seed = 0, bagging_method = 0, bagging_proportion = 0.9, vote_method = 1, split_search = 4, search_radius = 5, verbose = 0, nthreads = 2, ...){
-  
+#' @export
+#'
+brif.trainpredict <- function(x, newdata, type = c("score","class"), n_numeric_cuts = 31, n_integer_cuts = 31, max_integer_classes = 20, max_depth = 20, min_node_size = 1, ntrees=200, ps = 0, max_factor_levels = 30, seed = 0, bagging_method = 0, bagging_proportion = 0.9, vote_method = 1, split_search = 4, search_radius = 5, verbose = 0, nthreads = 2,
+                              CUDA = 0, CUDA_blocksize = 128, CUDA_n_lb_GPU = 20480, cubrif_main = "cubrif_main.exe", tmp_file_prefix = "cbf", ...){
+ 
   # check argument validity
   if(ntrees < 1){
     stop("ntrees must be a positive integer.")
@@ -424,7 +481,7 @@ brif.trainpredict <- function(x, newdata, type = c("score","class"), n_numeric_c
   if(seed < 0){
     stop("seed must be a positive integer.")
   }
-  
+ 
   n <- nrow(x)
   varnames <- colnames(x)
   vartypes <- sapply(x, class)
@@ -432,7 +489,7 @@ brif.trainpredict <- function(x, newdata, type = c("score","class"), n_numeric_c
   for(j in 1:length(vartypes)){
     if(vartypes[j] == "logical"){
       # change logical to integer
-      x[,j] <- 1L*x[,j] 
+      x[,j] <- 1L*x[,j]
       vartypes[j] <- "integer"
       if(verbose) message("Casting logical variable ", varnames[j], " to integer.")
     }
@@ -445,7 +502,7 @@ brif.trainpredict <- function(x, newdata, type = c("score","class"), n_numeric_c
       if(n_uniques > max_factor_levels) stop(paste("Variable", varnames[j], "has", n_uniques, "unique levels. If this is intended, adjust max_factor_levels parameter and re-run."))
     }
   }
-  
+ 
   if(seed != 0) set.seed(seed)
   # pad data and do stratified partition
   n_discard_bits <- ifelse(n %% 32 == 0, 0, 32 - n %% 32)
@@ -459,18 +516,18 @@ brif.trainpredict <- function(x, newdata, type = c("score","class"), n_numeric_c
     x <- rbind(x,x)  # duplicate x
     n <- nrow(x)
   }
-  
+ 
   x <- x[sample(1:n),]  # shuffle the rows
   x <- stratpar(x, 32)
-  
+ 
   if(n < 128){
     bagging_proportion = 1
   }
-  
+ 
   # validity check for newdata
   if (is.null(newdata)) stop("newdata must be provided.")
   if(!is.data.frame(newdata)) stop("newdata is not a data frame.")
-  
+ 
   n <- nrow(newdata)
   if(n < 1) stop("newdata contains too few records.")
   # remove white spaces
@@ -482,29 +539,65 @@ brif.trainpredict <- function(x, newdata, type = c("score","class"), n_numeric_c
   for(j in 2:length(vartypes)){
     this_var_name = varnames[j]
     if(vartypes[j] == 'factor'){
-      # do nothing     
+      # do nothing    
     } else if(vartypes[j] == 'integer'){
       if(is.logical(newdata[,this_var_name])){
         newdata[,this_var_name] <- 1L*newdata[,this_var_name]  # cast logical to integer
       }
     }
   }
-  
-  
-  pred <- rftrainpredict(x, newdata, par = list(n_numeric_cuts=as.integer(n_numeric_cuts), 
-                               n_integer_cuts=as.integer(n_integer_cuts), 
-                               max_integer_classes=as.integer(max_integer_classes), 
-                               max_depth=as.integer(max_depth), 
-                               min_node_size=as.integer(min_node_size), 
-                               ntrees=as.integer(ntrees), 
-                               ps=as.integer(ps), 
-                               bagging_method=as.integer(bagging_method),
-                               bagging_proportion=bagging_proportion,
-                               vote_method=as.integer(vote_method),
-                               split_search=as.integer(split_search),
-                               search_radius=as.integer(search_radius),
-                               verbose=as.integer(verbose), 
-                               nthreads=as.integer(nthreads)))
+ 
+  if((CUDA != 1 && CUDA != 2) | (CUDA == 2 & n < CUDA_n_lb_GPU)){
+    pred <- rftrainpredict(x, newdata, par = list(n_numeric_cuts=as.integer(n_numeric_cuts),
+                                n_integer_cuts=as.integer(n_integer_cuts),
+                                max_integer_classes=as.integer(max_integer_classes),
+                                max_depth=as.integer(max_depth),
+                                min_node_size=as.integer(min_node_size),
+                                ntrees=as.integer(ntrees),
+                                ps=as.integer(ps),
+                                bagging_method=as.integer(bagging_method),
+                                bagging_proportion=bagging_proportion,
+                                vote_method=as.integer(vote_method),
+                                split_search=as.integer(split_search),
+                                search_radius=as.integer(search_radius),
+                                verbose=as.integer(verbose),
+                                nthreads=as.integer(nthreads)))
+  } else {
+    # check if executable file exists
+    if(!file.exists(cubrif_main)){
+      stop("The required executable file does not exist.")
+    }
+ 
+    # Write training data to file
+    train_param <- brif_write_data(x, resp_col_num = 1, outfile = paste0(tmp_file_prefix, "_train"))
+    test_param <- brif_write_data(newdata[,varnames[2:length(varnames)]], resp_col_num = 0, outfile = paste0(tmp_file_prefix, "_test"))
+    # Write configuration file
+    configfile = paste0(tmp_file_prefix,"_config.txt")
+    sink(configfile)
+    cat(paste("n", train_param['n'], "\n"))
+    cat(paste("p", train_param['p'], "\n"))
+    cat(paste("trainfile", train_param['data_file'], "\n"))
+    cat(paste("validfile", test_param['data_file'], "\n"))
+    cat(paste("outfile", paste0(tmp_file_prefix,"_score.txt"), "\n"))
+    cat(paste("valid_n", test_param['n'], "\n"))
+    cat(paste("valid_X_only", 1, "\n"))
+    cat(paste("min_node_size", min_node_size, "\n"))
+    cat(paste("max_depth", max_depth, "\n"))
+    cat(paste("max_integer_classes", max_integer_classes, "\n"))
+    cat(paste("n_numeric_cuts", n_numeric_cuts, "\n"))
+    cat(paste("n_integer_cuts", n_integer_cuts, "\n"))
+    cat(paste("ntrees", ntrees, "\n"))
+    cat(paste("blocksize", CUDA_blocksize, "\n"))
+    cat(paste("n_lb_GPU", CUDA_n_lb_GPU, "\n"))
+    cat(paste("nthreads", nthreads, "\n"))
+    cat(paste("GPU", CUDA, "\n"))
+    sink()    
+    # Execute the main program
+    system(paste(cubrif_main, configfile), ignore.stdout = ifelse(verbose == 0, TRUE, FALSE))
+    # Read the score file
+    pred <- utils::read.table(paste0(tmp_file_prefix,"_score.txt"), header = TRUE)
+  }
+ 
   this_type <- match.arg(type)
   if(this_type == 'score'){
     if(ncol(pred) <= 1){
@@ -524,7 +617,7 @@ brif.trainpredict <- function(x, newdata, type = c("score","class"), n_numeric_c
           if(substr(as.character(resp.labels[i]),1,1) == "X"){
             resp.labels[i] <- sub('X','',resp.labels[i])
           }
-        }   
+        }  
         colnames(pred) <- resp.labels
       }
       return(pred)
@@ -544,7 +637,7 @@ brif.trainpredict <- function(x, newdata, type = c("score","class"), n_numeric_c
         if(substr(as.character(resp.labels[i]),1,1) == "X"){
           resp.labels[i] <- sub('X','',resp.labels[i])
         }
-      }   
+      }  
       colnames(pred) <- resp.labels
     }
     return(colnames(pred)[apply(pred, 1, which.max)])
