@@ -29,7 +29,7 @@
 #define LEFT 0
 #define RIGHT 1
 #define MAXDEPTH 40
-#define MAXNODES 1000
+#define MAXNODES 5000
 #define MAXBITBLOCK_VALUE UINT_MAX
 #define INTEGER_T_MIN INT_MIN
 #define INTEGER_T_MAX INT_MAX
@@ -215,7 +215,6 @@ void find_best_split(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int min_n
 void bootstrap_index_array(int n, int *array);
 dt_node_t* build_tree(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int ps, int max_depth, int min_node_size, int bagging_method, double bagging_proportion, int split_search, int search_radius);
 void predict_tree(dt_node_t *tree, bitblock_t ***bx, int **pred_tree, int J, int n_blocks);
-void predict_leaves(dt_leaf_t *leaves, bitblock_t ***bx, int **pred_tree, int J, int n_blocks);
 void predict(rf_model_t *model, bx_info_t * bx_new, double **pred, int vote_method, int nthreads);
 rf_model_t *create_empty_model(void);
 void get_numeric_summary(numeric_t *vector, int n, numeric_t *min_val, numeric_t *max_val, numeric_t *avg_val);

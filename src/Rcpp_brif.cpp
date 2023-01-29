@@ -1,9 +1,7 @@
 #include "brif.h"
 #include <Rcpp.h>
 #include <R_ext/Print.h>
-#ifdef _OPENMP
-#include <omp.h>
-#endif
+
 
 using namespace Rcpp;
 

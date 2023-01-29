@@ -1,4 +1,4 @@
-787fb23f116be9a401b12b477517442d *DESCRIPTION
+ee42ca1cdc98cd997574aac40d367406 *DESCRIPTION
 0ee9ea00404625614828c7a4c86e6d2e *NAMESPACE
 66f870e4c930cb99d1c417f2512b28f9 *R/RcppExports.R
 febe1cace313af97443cfbce882fc383 *R/brif.R
@@ -21,6 +21,6 @@ c76efc85491a8d830079f47e6ad522d9 *man/rftrain.Rd
 77b250a0efa63335acd532d5485a69d6 *src/Makevars
 77b250a0efa63335acd532d5485a69d6 *src/Makevars.win
 371dec6bea613f9b79c2880e91e9f113 *src/RcppExports.cpp
-0a837c9310757a2072e3d109594e8ab0 *src/Rcpp_brif.cpp
-4efbb083bcc00d2e18998a379ba5dfb3 *src/brif.cpp
-009e02a77bc293bc88861845a2047c32 *src/brif.h
+918b87c8dbdacb55972a567ad522fd18 *src/Rcpp_brif.cpp
+32dcddd74f0762da6077f3096eb9019c *src/brif.cpp
+5b922696800639b5c98331a8b8d7ce23 *src/brif.h

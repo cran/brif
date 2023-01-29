@@ -1079,6 +1079,7 @@ int countSetBits(bitblock_t n){
 
 // n_discard_bits are guaranteed 0 by previous steps, so ignore it
 // assuming bitblock_t is 4 bytes
+
 int count1s(bitblock_t *x, int n_blocks){
     int cnt = 0;
     for(int i = 0; i < n_blocks; i++){
@@ -1088,6 +1089,7 @@ int count1s(bitblock_t *x, int n_blocks){
     }
     return(cnt);
 }
+
 
 // shuffle the index array of size n in place, only care about the first ps elements
 void shuffle_array_first_ps(int *arr, int n, int ps){
@@ -2030,7 +2032,9 @@ dt_node_t* build_tree(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int ps, 
         valid_count = (int*)malloc(J*sizeof(int));
     }
 
-    dt_node_t* queue[MAXNODES]; 
+    //dt_node_t* queue[MAXNODES]; 
+    int cur_MAXNODES = MAXNODES;
+    dt_node_t **queue = (dt_node_t**)malloc(cur_MAXNODES*sizeof(dt_node_t*));
     int head = 0; 
     int tail = 0;
     dt_node_t* parent = NULL;
@@ -2093,14 +2097,18 @@ dt_node_t* build_tree(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int ps, 
 
     // if queue is not empty, process the node at queue head
     while(tail > head){
-        // if the buffer is full, shift to make room
-        if(tail >= MAXNODES - 2){
-            for(int i = 0; i < tail - head; i++){
-                queue[i] = queue[head+i];
+        // if the buffer is full, allocate more space or shift to make room
+        if(tail >= cur_MAXNODES - 2){
+            if(head > cur_MAXNODES / 5){  // move if there is at least 20% head room
+                for(int i = 0; i < tail - head; i++){
+                    queue[i] = queue[head+i];
+                }
+                tail = tail - head;
+                head = 0;
+            } else {
+                queue = (dt_node_t**)realloc(queue, (cur_MAXNODES + MAXNODES)*sizeof(dt_node_t*));
+                cur_MAXNODES = cur_MAXNODES + MAXNODES;
             }
-
-            tail = tail - head;
-            head = 0;
         }
         parent = queue[head++];
         // create its left child
@@ -2218,6 +2226,7 @@ dt_node_t* build_tree(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int ps, 
     }
     free(bindex);
     free(var_index);
+    free(queue);
     free(count);
     return(root);
 }
@@ -2259,85 +2268,67 @@ void predict_tree(dt_node_t *tree, bitblock_t ***bx, int **pred_tree, int J, int
     }
 }
 
-void predict_leaves(dt_leaf_t *leaves, bitblock_t ***bx, int **pred_tree, int J, int n_blocks){
-    if(leaves){
-        int i;
-        //#pragma omp parallel for 
-        for(i = 0; i < n_blocks; i++){
-            bitblock_t test0 = MAXBITBLOCK_VALUE;
-            for(int d = 0; d < leaves->depth; d++){
-                int this_var = leaves->rulepath_var[d];
-                int this_bx = leaves->rulepath_bx[d];
-                if(this_var > 0){
-                    test0 &= bx[this_var][this_bx][i];
-                } else if(this_var < 0){
-                    test0 &= ~bx[-this_var][this_bx][i];
-                } else {
-                    //printf("Impossible\n");
-                }
-            }
-            // set score for the block
-            unsigned bit = 0;
-            for(unsigned k = 1 << (8*sizeof(bitblock_t) - 1); k > 0; k = k / 2){
-                if(test0 & k){
-                    for(int j = 0; j < J; j++){
-                        pred_tree[j][i*8*sizeof(bitblock_t)+bit] = leaves->count[j];
-                    }
-                }
-                bit++;
-            }
-        }
-        predict_leaves(leaves->next, bx, pred_tree, J, n_blocks);
-    }
-}
+
 
 
 void predict(rf_model_t *model, bx_info_t * bx_new, double **pred, int vote_method, int nthreads){    
     if(model == NULL || model->ntrees == 0) return;
-/*
+
 #ifdef _OPENMP
     omp_set_num_threads(nthreads);
 #endif
-*/
+
     // unpack parameters
     int J = (model->yc)->nlevels;
     int n = bx_new->n;
     int n_blocks = bx_new->n_blocks;
     bitblock_t ***bx = bx_new->bx; 
 
-    int **pred_tree = (int**)malloc(J*sizeof(int*));
-    for(int k = 0; k < J; k++){
-        pred_tree[k] = (int*)malloc(n_blocks*8*sizeof(bitblock_t)*sizeof(int));  // size must be this, not simply n
-        memset(pred_tree[k], 0, n_blocks*8*sizeof(bitblock_t)*sizeof(int));
-        memset(pred[k], 0, n*sizeof(double));  // clear the output
-    }
-
+    int ***pred_tree = (int***)malloc(model->ntrees*sizeof(int**));
     for(int t = 0; t < model->ntrees; t++){
-        predict_leaves(model->tree_leaves[t], bx, pred_tree, J, n_blocks);
-
-        if(vote_method == 0){
-            int i;
-            //#pragma omp parallel for
-            for(i = 0; i < n; i++){
-                for(int k = 0; k < J; k++){
-                    pred[k][i] += pred_tree[k][i];
-                }                
-            }
-        } else {
-            int i;
-            //#pragma omp parallel for
-            for(i = 0; i < n; i++){
-                double this_sum = 0;
-                for(int k = 0; k < J; k++){
-                    this_sum += pred_tree[k][i];
-                }
-                for(int k = 0; k < J; k++){
-                    pred[k][i] += 1.0 * pred_tree[k][i] / this_sum;
-                }                
-            }
-
+        pred_tree[t] = (int**)malloc(J*sizeof(int*));
+        for(int k = 0; k < J; k++){
+            pred_tree[t][k] = (int*)malloc(n_blocks*8*sizeof(bitblock_t)*sizeof(int));  // size must be this, not simply n
+            memset(pred_tree[t][k], 0, n_blocks*8*sizeof(bitblock_t)*sizeof(int));
         }
+    }
+    
+    for(int k = 0; k < J; k++)
+        memset(pred[k], 0, n*sizeof(double));  // clear the output
 
+    int t;
+    #pragma omp parallel for
+    for(t = 0; t < model->ntrees; t++){
+        dt_leaf_t *leaves = model->tree_leaves[t];
+        while(leaves){
+            int i;
+            //#pragma omp parallel for 
+            for(i = 0; i < n_blocks; i++){
+                bitblock_t test0 = MAXBITBLOCK_VALUE;
+                for(int d = 0; d < leaves->depth; d++){
+                    int this_var = leaves->rulepath_var[d];
+                    int this_bx = leaves->rulepath_bx[d];
+                    if(this_var > 0){
+                        test0 &= bx[this_var][this_bx][i];
+                    } else if(this_var < 0){
+                        test0 &= ~bx[-this_var][this_bx][i];
+                    } else {
+                        //printf("Impossible\n");
+                    }
+                }
+                // set score for the block
+                unsigned bit = 0;
+                for(bitblock_t k = 1 << (8*sizeof(bitblock_t) - 1); k > 0; k >>= 1){
+                    if(test0 & k){
+                        for(int j = 0; j < J; j++){
+                            pred_tree[t][j][i*8*sizeof(bitblock_t)+bit] = leaves->count[j];
+                        }
+                    }
+                    bit++;
+                }
+            }
+            leaves = leaves->next;
+        } 
     }
     
     // average the predictions
@@ -2347,7 +2338,10 @@ void predict(rf_model_t *model, bx_info_t * bx_new, double **pred, int vote_meth
         for(i = 0; i < n; i++){
             double total_count = 0;
             for(int k = 0; k < J; k++){
-                total_count += pred[k][i];
+                for(int t = 0; t < model->ntrees; t++){
+                    total_count += pred_tree[t][k][i];
+                    pred[k][i] += pred_tree[t][k][i];
+                }
             }
             for(int k = 0; k < J; k++){
                 pred[k][i] = pred[k][i] / total_count;
@@ -2357,15 +2351,25 @@ void predict(rf_model_t *model, bx_info_t * bx_new, double **pred, int vote_meth
         int i;
         //#pragma omp parallel for
         for(i = 0; i < n; i++){
-            for(int k = 0; k < J; k++){
-                pred[k][i] = pred[k][i] / model->ntrees;
+            for(int t = 0; t < model->ntrees; t++){
+                double this_sum = 0;
+                for(int k = 0; k < J; k++){
+                    this_sum += pred_tree[t][k][i];
+                }
+                for(int k = 0; k < J; k++)
+                    pred[k][i] += pred_tree[t][k][i] / this_sum;
             }
+            for(int k = 0; k < J; k++)
+                pred[k][i] = pred[k][i] / model->ntrees;
         }        
     }
 
     // release temp memory
-    for(int k = 0; k < J; k++){
-        free(pred_tree[k]);
+    for(int t = 0; t < model->ntrees; t++){
+        for(int k = 0; k < J; k++){
+            free(pred_tree[t][k]);
+        }
+        free(pred_tree[t]);
     }
     free(pred_tree);  
 }
